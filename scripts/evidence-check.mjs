@@ -5,7 +5,7 @@ const help=readFileSync(new URL('../extension/README.md',import.meta.url),'utf8'
 const source=readFileSync(new URL('../extension/src/app/HelpFlyout.tsx',import.meta.url),'utf8');
 assert.equal(project.hostContract.profile,'system-level');
 assert.equal(project.hostContract.flyoutProps.length,0);
-for(const section of ['## What it does','## How to use it','## Configuration','## Prerequisites','## Limitations']) assert.ok(help.includes(section),`Help documentation missing ${section}`);
+for(const section of ['## O que a extensão faz','## Como usar','## Configuração','## Pré-requisitos','## Limitações']) assert.ok(help.includes(section),`Help documentation missing ${section}`);
 assert.ok(source.includes("import helpMarkdown from '../../README.md'"),'Help must bundle the feature README');
 assert.ok(source.includes('ReactMarkdown'),'Help must render formatted Markdown');
 console.log('Extension evidence checks passed');

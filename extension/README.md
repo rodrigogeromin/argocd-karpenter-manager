@@ -1,50 +1,50 @@
 # Karpenter Manager
 
-Karpenter Manager is a system-level Argo CD UI extension for inspecting and editing Karpenter `NodePool` and `EC2NodeClass` specifications. This document is also the in-product Help content and is bundled with the extension so it works without an external documentation service.
+O Karpenter Manager é uma extensão de sistema do Argo CD para consultar e editar configurações dos recursos `NodePool` e `EC2NodeClass` do Karpenter. Este documento também é a ajuda exibida dentro da extensão. Ele é incluído no pacote, então funciona sem depender de um serviço externo de documentação.
 
-## What it does
+## O que a extensão faz
 
-- Lists `NodePool` and `EC2NodeClass` custom resources available through the configured API.
-- Loads an individual resource into guided forms for common NodePool and EC2NodeClass options.
-- Validates common values locally and asks the operator to review the impact before applying changes.
-- Preserves selectors and mappings that use advanced configurations the form cannot safely simplify.
-- Shows API errors, loading state, empty state, and a success message.
-- Provides this guide in the Argo CD UI through the **Ajuda** button.
+- Lista os recursos personalizados `NodePool` e `EC2NodeClass` disponíveis pela API configurada.
+- Abre cada recurso em um formulário guiado com opções comuns de configuração.
+- Valida localmente os valores mais comuns e pede que você revise o impacto antes de aplicar as alterações.
+- Preserva seletores e mapeamentos avançados que o formulário não consegue simplificar com segurança.
+- Exibe erros da API, estado de carregamento, listas vazias e confirmação de sucesso.
+- Disponibiliza esta orientação no Argo CD pelo botão **Ajuda**.
 
-## How to use it
+## Como usar
 
-1. Open **Karpenter** from the Argo CD system navigation.
-2. Choose **NodePools** or **EC2NodeClasses**.
-3. Select a resource to open its guided configuration form.
-4. Change the available fields, choose **Revisar alterações**, then review and apply the summary.
-5. Use **Atualizar** to reload the current resource list. Open **Ajuda** for this guide.
+1. No menu de sistema do Argo CD, abra **Karpenter**.
+2. Escolha **NodePools** ou **EC2NodeClasses**.
+3. Selecione um recurso para abrir o formulário guiado de configuração.
+4. Altere os campos disponíveis, clique em **Revisar alterações** e confira o resumo antes de aplicar.
+5. Use **Atualizar** para carregar novamente a lista de recursos. Abra **Ajuda** para consultar estas orientações.
 
-Changes are sent directly to the Kubernetes API by the backend and may be reconciled or overwritten by GitOps controllers. The form covers commonly used capacity, limits, disruption, identity, network discovery, metadata, and AMI settings. Advanced selectors and EBS mappings stay unchanged unless explicitly supported by the form. Review the summary and your GitOps source of truth before editing production resources.
+As alterações são enviadas pelo backend diretamente à API do Kubernetes. Controladores GitOps podem reconciliar os recursos ou substituir as alterações feitas pela extensão. Os formulários cobrem opções comuns de capacidade, limites, interrupções, identidade, descoberta de rede, metadados e AMI. Seletores avançados e mapeamentos EBS existentes são mantidos como estão, a menos que o formulário ofereça suporte explícito a eles. Antes de editar recursos de produção, confira o resumo das alterações e a fonte de verdade do seu GitOps.
 
-## Configuration
+## Configuração
 
-The extension is registered as a system-level extension using `extension/extension-project.json`:
+A extensão é registrada como uma extensão de sistema usando `extension/extension-project.json`:
 
-- Title: `Karpenter`
-- Path: `/karpenter`
-- API base path: `/extensions/karpenter/api/v1`
-- API context headers: `Argocd-Application-Name` and `Argocd-Project-Name`
-- Header values: read at runtime from `window.karpenterManagerConfig`, supplied by the `karpenter-manager-config` ConfigMap mounted into `argocd-server`.
+- Título: `Karpenter`
+- Caminho: `/karpenter`
+- Caminho base da API: `/extensions/karpenter/api/v1`
+- Cabeçalhos de contexto da API: `Argocd-Application-Name` e `Argocd-Project-Name`
+- Valores dos headers: lidos em tempo de execução de `window.karpenterManagerConfig`, fornecido pelo ConfigMap `karpenter-manager-config` montado no `argocd-server`.
 
-The backend is configured separately. Keep the Application/project values in the Argo CD UI ConfigMap aligned with the `karpenter-manager-context` ConfigMap used by the API. When either value changes, restart `argocd-server` and the `karpenter-manager` Deployment so the mounted configuration and API environment reload. See the repository's deployment guide for the Argo CD extension proxy and Kubernetes credentials. The API must provide `GET /nodepools`, `GET /nodepools/{name}`, `PATCH /nodepools/{name}`, and corresponding `/ec2nodeclasses` endpoints.
+A configuração do backend é separada. Mantenha os valores de Application e Project do ConfigMap da interface do Argo CD alinhados com o ConfigMap `karpenter-manager-context` usado pela API. Quando qualquer um desses valores mudar, reinicie `argocd-server` e o Deployment `karpenter-manager` para recarregar a configuração montada e as variáveis de ambiente da API. Consulte o guia de instalação do repositório para configurar o proxy da extensão do Argo CD e as credenciais do Kubernetes. A API deve fornecer `GET /nodepools`, `GET /nodepools/{name}`, `PATCH /nodepools/{name}` e as rotas equivalentes para `/ec2nodeclasses`.
 
-## Prerequisites
+## Pré-requisitos
 
-- Argo CD UI with system-level extensions enabled and compatible with the host contract recorded in the project manifest.
-- The Karpenter Manager API deployed behind the Argo CD extension proxy.
-- Kubernetes API access for the backend service account to list, read, and patch Karpenter `NodePool` and `EC2NodeClass` resources.
-- Appropriate RBAC and network policies for the API service.
+- Interface do Argo CD com extensões de sistema habilitadas e compatível com o contrato do host registrado no manifesto do projeto.
+- API do Karpenter Manager implantada atrás do proxy de extensões do Argo CD.
+- Permissão de acesso à API do Kubernetes para que a conta de serviço do backend possa listar, consultar e alterar recursos `NodePool` e `EC2NodeClass` do Karpenter.
+- Regras adequadas de RBAC e políticas de rede para a API.
 
-## Limitations
+## Limitações
 
-- The guided form intentionally exposes a focused set of options; advanced Karpenter configuration remains preserved and is not editable here.
-- The review step summarizes affected areas, but is not a complete field-by-field diff and there is no rollback.
-- Kubernetes admission and Karpenter validation are authoritative. A syntactically valid JSON document may still be rejected by the cluster.
-- The extension does not independently authenticate users; requests rely on the Argo CD session and backend authorization configuration.
-- The prototype only supports the API routes listed above and assumes their response shape contains an `items` array for list responses and a resource object for detail or patch responses.
-- This help content is rendered as Markdown with raw HTML disabled and is bundled into the extension for offline use.
+- O formulário guiado oferece um conjunto específico de opções. Configurações avançadas do Karpenter são preservadas, mas não podem ser editadas por esta interface.
+- A etapa de revisão resume as áreas afetadas, mas não mostra uma comparação completa campo a campo e não há opção de desfazer.
+- As regras de admissão do Kubernetes e a validação do Karpenter são as fontes definitivas. Um documento JSON sintaticamente válido ainda pode ser rejeitado pelo cluster.
+- A extensão não autentica usuários de forma independente; as solicitações dependem da sessão do Argo CD e da configuração de autorização do backend.
+- O protótipo oferece suporte apenas às rotas da API listadas acima. As respostas de listagem devem conter um array `items`; as respostas de consulta e alteração devem conter o objeto do recurso.
+- Este conteúdo é exibido como Markdown, sem HTML bruto, e acompanha a extensão para uso mesmo sem conexão com um serviço externo de documentação.

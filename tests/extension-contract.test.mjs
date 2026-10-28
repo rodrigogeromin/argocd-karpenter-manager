@@ -62,7 +62,7 @@ test('Karpenter editing uses guided fields with validation and review instead of
   assert.match(editor, /Rede/);
   assert.match(model, /validateSpec/);
   assert.match(model, /O seletor atual contém regras adicionais/);
-  assert.match(help, /guided forms/);
+  assert.match(help, /formulário guiado/);
 });
 
 test('Karpenter proxy context is read from the Argo CD server config map', async () => {
