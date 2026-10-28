@@ -1,0 +1,49 @@
+name: Validate
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  extension:
+    name: Build and test extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: extension/.nvmrc
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: npm install --global npm@11.19.1
+      - run: npm ci
+        working-directory: extension
+      - run: npm run typecheck
+        working-directory: extension
+      - run: npm test
+        working-directory: extension
+      - run: npm run build
+        working-directory: extension
+      - run: npm run package
+        working-directory: extension
+      - run: npm audit --audit-level=moderate
+        working-directory: extension
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: karpenter-manager-extension
+          path: dist/karpenter-manager.tar.gz
+          if-no-files-found: error
+  api:
+    name: Test FastAPI backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@e797f83bcb11b83ae66a0230d3a2a8e837b7e4e2 # v6.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: api/requirements*.txt
+      - run: pip install -r api/requirements-dev.txt
+      - run: python -m pytest -q

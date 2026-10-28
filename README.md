@@ -48,6 +48,19 @@ The API expects Argo CD proxy context headers for the configured synthetic conte
 
 Patch uses Kubernetes `application/merge-patch+json` and only accepts a top-level `spec` key. Normal Kubernetes validation and Karpenter reconciliation still apply.
 
+## CI, build and releases
+
+GitHub Actions compiles the system extension, type-checks it, runs frontend contract tests and FastAPI tests, verifies that the production bundle contains only the expected extension, packages it, and runs `npm audit`. Pushes to `main`, pull requests and manual dispatch run `.github/workflows/validate.yml`; CI uploads `dist/karpenter-manager.tar.gz` for download.
+
+The release workflow runs when a `v*` tag is pushed. Before dependency installation it checks that the tag matches `extension/package.json` (currently `v0.1.0`), then repeats the checks and creates a GitHub Release with the extension tarball, SHA-256 checksum, release identity, Argo CD Application manifest and proxy/RBAC patch. For example, after merging version changes to `main`:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The tag is the release trigger; the workflow publishes the release after all checks pass.
+
 ## Next prototype increments
 
 1. Replace raw JSON editing with focused controls and before/after diff.
