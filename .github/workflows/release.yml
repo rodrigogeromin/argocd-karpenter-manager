@@ -46,11 +46,20 @@ jobs:
       - run: python -m pytest -q
       - name: Prepare release checksums
         run: node scripts/release-assets.mjs
-      - name: Publish GitHub release
+      - name: Create GitHub release when the tag has no release record
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$RELEASE_TAG" \
-            --repo "$RELEASE_REPOSITORY" --verify-tag --generate-notes \
+          if gh release view "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; uploading validated assets."
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "$RELEASE_REPOSITORY" --verify-tag --generate-notes
+          fi
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --clobber \
             dist/karpenter-manager.tar.gz dist/checksums.txt dist/release-info.txt \
             dist/argocd-server-patch.yaml dist/application.yaml dist/argocd-patches.yaml dist/installation.md
