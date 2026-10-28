@@ -36,7 +36,8 @@ test('feature help renders bundled Markdown in an accessible dialog', () => {
 
 test('Karpenter feature continues to use the authenticated proxy route', async () => {
   const feature = await readFile(new URL('../extension/src/features/karpenter/KarpenterManager.tsx', import.meta.url), 'utf8');
-  assert.match(feature, /listResources/);
+  assert.match(feature, /listClusterResources/);
+  assert.match(feature, /listClusters/);
   assert.match(feature, /getResource/);
   assert.match(feature, /patchResource/);
   const api = await readFile(new URL('../extension/src/features/karpenter/api.ts', import.meta.url), 'utf8');
