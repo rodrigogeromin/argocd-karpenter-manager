@@ -105,6 +105,7 @@ spec:
                   ports: [{name: http, containerPort: 8080}]
                   env:
                   - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+                  - {name: KARPENTER_LOG_LEVEL, value: "INFO"}
                   - name: ARGOCD_APPLICATION
                     valueFrom:
                       configMapKeyRef: {name: karpenter-manager-context, key: ARGOCD_APPLICATION}
@@ -134,12 +135,17 @@ spec:
               """Karpenter API that targets clusters registered in Argo CD."""
               from contextlib import asynccontextmanager
               import base64
+              from datetime import datetime, timezone
               import json
+              import logging
               import os
               from pathlib import Path
               import re
               import ssl
+              import sys
+              from time import perf_counter
               from urllib.parse import quote
+              from uuid import uuid4
 
               import httpx
               from fastapi import Depends, FastAPI, HTTPException, Request
@@ -157,6 +163,39 @@ spec:
               DEMO = os.getenv("KARPENTER_DEMO_MODE", "false").lower() == "true"
               NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
               CLUSTER_LABEL = "argocd.argoproj.io/secret-type"
+
+
+              class JsonLogFormatter(logging.Formatter):
+                  """Emit structured diagnostics without request headers or bodies."""
+
+                  FIELDS = (
+                      "request_id", "method", "path", "status_code", "duration_ms", "cluster_id",
+                      "kube_method", "kube_path", "upstream_host", "upstream_status_code", "exception_type",
+                  )
+
+                  def format(self, record: logging.LogRecord) -> str:
+                      entry = {
+                          "timestamp": datetime.fromtimestamp(record.created, timezone.utc).isoformat(),
+                          "level": record.levelname,
+                          "logger": record.name,
+                          "event": record.getMessage(),
+                      }
+                      for field in self.FIELDS:
+                          value = getattr(record, field, None)
+                          if value is not None:
+                              entry[field] = value
+                      if record.exc_info:
+                          entry["exception"] = self.formatException(record.exc_info)
+                      return json.dumps(entry, ensure_ascii=False)
+
+
+              logger = logging.getLogger("karpenter_manager.api")
+              if not logger.handlers:
+                  log_handler = logging.StreamHandler(sys.stdout)
+                  log_handler.setFormatter(JsonLogFormatter())
+                  logger.addHandler(log_handler)
+              logger.setLevel(os.getenv("KARPENTER_LOG_LEVEL", "INFO").upper())
+              logger.propagate = False
 
               FIXTURES = {
                   "clusters": [{"id": "demo-cluster", "name": "demo-cluster", "server": "https://demo.example.invalid", "project": "default", "connectionType": "demo"}],
@@ -218,26 +257,40 @@ spec:
                   return f"{path}/{quote(name, safe='')}" if name else path
 
 
-              async def kube_request(request: Request, method: str, path: str, *, json_body=None, client=None):
+              async def kube_request(request: Request, method: str, path: str, *, json_body=None, client=None, cluster_id=None):
                   owned_client = client is not None
                   client = client or request.app.state.kube
+                  upstream_host = getattr(getattr(client, "base_url", None), "host", None)
+                  diagnostic = {
+                      "request_id": getattr(request.state, "request_id", None),
+                      "cluster_id": cluster_id,
+                      "kube_method": method,
+                      "kube_path": path,
+                      "upstream_host": upstream_host,
+                  }
                   try:
                       response = await client.request(method, path, json=json_body,
                                                       headers={"Content-Type": "application/merge-patch+json"} if method == "PATCH" else None)
-                  except httpx.TimeoutException:
+                  except httpx.TimeoutException as exc:
+                      logger.warning("kubernetes_request_timeout", extra={**diagnostic, "exception_type": type(exc).__name__})
                       raise HTTPException(504, "Tempo limite ao acessar a API Kubernetes") from None
-                  except httpx.HTTPError:
+                  except httpx.HTTPError as exc:
+                      logger.exception("kubernetes_request_transport_error", extra={**diagnostic, "exception_type": type(exc).__name__})
                       raise HTTPException(502, "Falha ao acessar a API Kubernetes") from None
                   finally:
                       if owned_client:
                           await client.aclose()
                   if response.status_code == 404:
+                      logger.info("kubernetes_resource_not_found", extra={**diagnostic, "upstream_status_code": response.status_code})
                       raise HTTPException(404, "Cluster ou recurso Karpenter não encontrado")
                   if response.status_code == 401:
+                      logger.warning("kubernetes_authentication_rejected", extra={**diagnostic, "upstream_status_code": response.status_code})
                       raise HTTPException(502, "A autenticação configurada para o cluster foi rejeitada")
                   if response.status_code == 403:
+                      logger.warning("kubernetes_authorization_rejected", extra={**diagnostic, "upstream_status_code": response.status_code})
                       raise HTTPException(403, "A credencial do cluster não tem permissão para esta operação")
                   if response.is_error:
+                      logger.warning("kubernetes_api_error", extra={**diagnostic, "upstream_status_code": response.status_code})
                       detail = "A API Kubernetes rejeitou a solicitação"
                       try:
                           detail = response.json().get("message", detail)
@@ -254,11 +307,29 @@ spec:
                           "/api/v1/namespaces/argocd/secrets",
                           params={"labelSelector": f"{CLUSTER_LABEL}=cluster"},
                       )
-                  except httpx.HTTPError:
+                  except httpx.HTTPError as exc:
+                      logger.exception("argocd_cluster_inventory_transport_error", extra={
+                          "request_id": getattr(request.state, "request_id", None),
+                          "kube_method": "GET", "kube_path": "/api/v1/namespaces/argocd/secrets",
+                          "upstream_host": request.app.state.kube_config.get("server"),
+                          "exception_type": type(exc).__name__,
+                      })
                       raise HTTPException(502, "Não foi possível consultar o inventário de clusters do Argo CD") from None
                   if response.status_code == 403:
+                      logger.error("argocd_cluster_inventory_forbidden", extra={
+                          "request_id": getattr(request.state, "request_id", None),
+                          "kube_method": "GET", "kube_path": "/api/v1/namespaces/argocd/secrets",
+                          "upstream_host": request.app.state.kube_config.get("server"),
+                          "upstream_status_code": response.status_code,
+                      })
                       raise HTTPException(503, "A API não tem permissão para ler os Secrets de cluster do namespace argocd")
                   if response.is_error:
+                      logger.error("argocd_cluster_inventory_error", extra={
+                          "request_id": getattr(request.state, "request_id", None),
+                          "kube_method": "GET", "kube_path": "/api/v1/namespaces/argocd/secrets",
+                          "upstream_host": request.app.state.kube_config.get("server"),
+                          "upstream_status_code": response.status_code,
+                      })
                       raise HTTPException(502, "Não foi possível consultar o inventário de clusters do Argo CD")
                   items = response.json().get("items", [])
                   # Argo CD's implicit in-cluster target has no cluster Secret; expose it as a virtual entry.
@@ -298,7 +369,7 @@ spec:
                           "server": data.get("server"), "project": data.get("project") or "default", "connectionType": connection_type}
 
 
-              def aws_eks_token(auth: dict) -> str:
+              def aws_eks_token(auth: dict, request: Request, cluster_id: str) -> str:
                   """Create an EKS token using the API pod's AWS identity, optionally assuming Argo's role."""
                   try:
                       import boto3
@@ -320,7 +391,12 @@ spec:
                       SigV4QueryAuth(creds, "sts", "us-east-1", expires=60).add_auth(request)
                       token = base64.urlsafe_b64encode(request.url.encode()).decode().rstrip("=")
                       return f"k8s-aws-v1.{token}"
-                  except Exception:
+                  except Exception as exc:
+                      logger.exception("eks_token_generation_failed", extra={
+                          "request_id": getattr(request.state, "request_id", None),
+                          "cluster_id": cluster_id,
+                          "exception_type": type(exc).__name__,
+                      })
                       raise HTTPException(502, "Não foi possível gerar credencial AWS para este cluster; confira awsAuthConfig e a identidade IAM da API") from None
 
 
@@ -330,6 +406,9 @@ spec:
                       return None
                   server = data.get("server")
                   if not server or not server.startswith("https://"):
+                      logger.error("cluster_endpoint_invalid", extra={
+                          "request_id": getattr(request.state, "request_id", None), "cluster_id": cluster_id,
+                      })
                       raise HTTPException(502, "O cluster do Argo CD não possui um endpoint HTTPS válido")
                   config = data["config"]
                   headers = {}
@@ -340,26 +419,57 @@ spec:
                   elif tls.get("caData"):
                       try:
                           verify = ssl.create_default_context(cadata=base64.b64decode(tls["caData"]).decode("utf-8"))
-                      except (ValueError, TypeError, ssl.SSLError):
+                      except (ValueError, TypeError, ssl.SSLError) as exc:
+                          logger.warning("cluster_ca_configuration_invalid", extra={
+                              "request_id": getattr(request.state, "request_id", None),
+                              "cluster_id": cluster_id, "exception_type": type(exc).__name__,
+                          })
                           raise HTTPException(502, "Certificado CA do cluster no Argo CD é inválido") from None
                   if config.get("awsAuthConfig"):
-                      headers["Authorization"] = f"Bearer {aws_eks_token(config['awsAuthConfig'])}"
+                      headers["Authorization"] = f"Bearer {aws_eks_token(config['awsAuthConfig'], request, cluster_id)}"
                   elif data.get("bearerToken"):
                       headers["Authorization"] = f"Bearer {data['bearerToken']}"
                   else:
+                      logger.warning("cluster_auth_provider_unsupported", extra={
+                          "request_id": getattr(request.state, "request_id", None), "cluster_id": cluster_id,
+                      })
                       raise HTTPException(501, "Este protótipo suporta clusters com bearerToken ou awsAuthConfig do EKS; este cluster usa outro provedor")
                   if tls.get("certData") or tls.get("keyData"):
+                      logger.warning("cluster_client_certificate_unsupported", extra={
+                          "request_id": getattr(request.state, "request_id", None), "cluster_id": cluster_id,
+                      })
                       raise HTTPException(501, "Autenticação por certificado de cliente ainda não é suportada neste protótipo")
                   try:
                       return httpx.AsyncClient(base_url=server.rstrip("/"), headers=headers, verify=verify,
                                                  timeout=httpx.Timeout(10.0, connect=4.0), trust_env=False)
-                  except (ValueError, httpx.HTTPError):
+                  except (ValueError, httpx.HTTPError) as exc:
+                      logger.exception("cluster_client_configuration_failed", extra={
+                          "request_id": getattr(request.state, "request_id", None),
+                          "cluster_id": cluster_id, "exception_type": type(exc).__name__,
+                      })
                       raise HTTPException(502, "Não foi possível configurar a conexão segura com o cluster") from None
 
 
               @app.middleware("http")
               async def safe_headers(request, call_next):
-                  response = await call_next(request)
+                  request_id = str(uuid4())
+                  request.state.request_id = request_id
+                  started = perf_counter()
+                  try:
+                      response = await call_next(request)
+                  except Exception as exc:
+                      logger.exception("request_unhandled_exception", extra={
+                          "request_id": request_id, "method": request.method, "path": request.url.path,
+                          "exception_type": type(exc).__name__,
+                      })
+                      raise
+                  duration_ms = round((perf_counter() - started) * 1000, 2)
+                  level = logging.ERROR if response.status_code >= 500 else logging.WARNING if response.status_code >= 400 else logging.DEBUG if request.url.path == "/healthz" else logging.INFO
+                  logger.log(level, "http_request_completed", extra={
+                      "request_id": request_id, "method": request.method, "path": request.url.path,
+                      "status_code": response.status_code, "duration_ms": duration_ms,
+                  })
+                  response.headers["X-Request-ID"] = request_id
                   response.headers["Cache-Control"] = "no-store"
                   response.headers["X-Content-Type-Options"] = "nosniff"
                   return response
@@ -386,7 +496,7 @@ spec:
                           raise HTTPException(404, "Cluster não encontrado")
                       return {"items": FIXTURES[kind]}
                   client = await target_client(request, cluster_id)
-                  result = await kube_request(request, "GET", resource_path(kind), client=client)
+                  result = await kube_request(request, "GET", resource_path(kind), client=client, cluster_id=cluster_id)
                   return {"items": result.get("items", [])}
 
 
@@ -402,7 +512,7 @@ spec:
                               return item
                       raise HTTPException(404, "Recurso Karpenter não encontrado")
                   client = await target_client(request, cluster_id)
-                  return await kube_request(request, "GET", resource_path(kind, name), client=client)
+                  return await kube_request(request, "GET", resource_path(kind, name), client=client, cluster_id=cluster_id)
 
 
               @app.patch("/api/v1/clusters/{cluster_id}/{kind}/{name}", dependencies=[Depends(authorize)])
@@ -419,7 +529,7 @@ spec:
                               return item
                       raise HTTPException(404, "Recurso Karpenter não encontrado")
                   client = await target_client(request, cluster_id)
-                  return await kube_request(request, "PATCH", resource_path(kind, name), json_body=body, client=client)
+                  return await kube_request(request, "PATCH", resource_path(kind, name), json_body=body, client=client, cluster_id=cluster_id)
             requirements.txt: |
               fastapi==0.115.12
               httpx==0.28.1

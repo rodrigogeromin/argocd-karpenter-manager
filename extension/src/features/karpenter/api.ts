@@ -25,7 +25,8 @@ async function request(path:string,init?:RequestInit):Promise<unknown> {
   const body=await response.json().catch(()=>null);
   if(!response.ok) {
     const message=isRecord(body)&&typeof body.detail==='string'?body.detail:`API respondeu ${response.status}`;
-    throw new Error(message);
+    const requestId=response.headers.get('X-Request-ID');
+    throw new Error(requestId?`${message} (request_id: ${requestId})`:message);
   }
   return body;
 }
