@@ -1,0 +1,20 @@
+# Merge these keys into argocd-cm and argocd-rbac-cm; preserve other settings.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  extension.config.karpenter: |
+    connectionTimeout: 5s
+    services:
+      - url: http://karpenter-manager.karpenter-manager.svc.cluster.local:8080
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.csv: |
+    p, role:admin, extensions, invoke, karpenter, allow
