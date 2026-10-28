@@ -48,6 +48,23 @@ test('Karpenter feature continues to use the authenticated proxy route', async (
   assert.match(feature, /<HelpFlyout onClose=/);
 });
 
+test('Karpenter editing uses guided fields with validation and review instead of a JSON editor', async () => {
+  const feature = await readFile(new URL('../extension/src/features/karpenter/KarpenterManager.tsx', import.meta.url), 'utf8');
+  const editor = await readFile(new URL('../extension/src/features/karpenter/ResourceEditor.tsx', import.meta.url), 'utf8');
+  const model = await readFile(new URL('../extension/src/features/karpenter/form-model.ts', import.meta.url), 'utf8');
+  const help = await readFile(new URL('../extension/README.md', import.meta.url), 'utf8');
+  assert.doesNotMatch(feature, /<textarea/);
+  assert.match(feature, /<ResourceEditor/);
+  assert.match(feature, /Revisar alterações/);
+  assert.match(feature, /Aplicar alterações/);
+  assert.match(editor, /Limites de provisionamento/);
+  assert.match(editor, /Acesso à AWS/);
+  assert.match(editor, /Rede/);
+  assert.match(model, /validateSpec/);
+  assert.match(model, /O seletor atual contém regras adicionais/);
+  assert.match(help, /guided forms/);
+});
+
 test('extension uses a host registration adapter', () => {
   assert.match(source, /registerSystemLevelExtension/);
   assert.match(source, /new MutationObserver/);
