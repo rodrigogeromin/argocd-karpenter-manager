@@ -10,9 +10,18 @@
   "templateVersion": "2.2.1",
   "hostContract": {
     "sourceKind": "official", "tag": "v3.5.1",
+    "sources": [
+      "https://github.com/argoproj/argo-cd/blob/v3.5.1/ui/src/app/shared/services/extensions-service.ts",
+      "https://github.com/argoproj/argo-cd/blob/v3.5.1/ui/src/app/index.tsx",
+      "https://github.com/argoproj/argo-cd/blob/v3.5.1/ui/package.json",
+      "https://github.com/argoproj/argo-cd/blob/v3.5.1/ui/pnpm-lock.yaml"
+    ],
+    "profile": "system-level",
     "method": "registerSystemLevelExtension",
     "signature": "registerSystemLevelExtension(component, title, path, icon)",
     "props": [], "globals": ["React", "ReactDOM", "ReactJSXRuntime"], "jsxMode": "automatic",
+    "flyoutProps": [],
+    "runtime": {"react": "19.2.6", "reactDom": "19.2.6", "typesReact": "19.2.14", "typesReactDom": "19.2.3"},
     "argumentMap": ["component", "registration.title", "registration.path", "registration.icon"]
   }
 }
