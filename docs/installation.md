@@ -68,4 +68,8 @@ kubectl rollout status deployment/argocd-server -n argocd
 kubectl rollout status deployment/karpenter-manager -n karpenter-manager
 ```
 
-The UI bundle is separate from the backend Application and Proxy Extension. The system page appears at `/karpenter`; calls go through `/extensions/karpenter`. The backend service account can only get/list/patch `nodepools.karpenter.sh` and `ec2nodeclasses.karpenter.k8s.aws`.
+The UI bundle is separate from the backend Application and Proxy Extension. The system page appears at `/karpenter`; calls go through `/extensions/karpenter`.
+
+The API lists Argo CD cluster Secrets in namespace `argocd` (`argocd.argoproj.io/secret-type=cluster`) to build the cluster selector and target connections. The supplied manifest grants the API ServiceAccount `get` and `list` on Secrets in that namespace. Kubernetes RBAC cannot restrict a `list` request to a Secret label, so this access includes other Secrets in `argocd`; treat the API as security-sensitive and limit who can invoke it. The API resolves cluster IDs only against this inventory and never accepts a Kubernetes endpoint from the browser.
+
+For remote clusters, the credential stored in each Argo CD cluster Secret must authorize `get`, `list`, and `patch` on `nodepools.karpenter.sh` and `ec2nodeclasses.karpenter.k8s.aws`. For EKS `awsAuthConfig`, give the API pod an AWS identity that can assume the configured `roleARN`, when present, and ensure that role is mapped to Kubernetes permissions in the target cluster. The API supports `bearerToken` and EKS `awsAuthConfig`; other authentication providers are not supported in this prototype. The local `in-cluster` option uses the API ServiceAccount and the Karpenter ClusterRole in the manifest.

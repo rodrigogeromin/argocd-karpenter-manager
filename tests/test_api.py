@@ -1,4 +1,4 @@
-"""API contract tests use the in-memory fixture mode and never contact a cluster."""
+"""API contract tests use fixtures and never contact a cluster."""
 import os
 
 os.environ["KARPENTER_DEMO_MODE"] = "true"
@@ -11,6 +11,7 @@ HEADERS = {
     "Argocd-Application-Name": CONTEXT["argocd-application-name"],
     "Argocd-Project-Name": CONTEXT["argocd-project-name"],
 }
+CLUSTER = "demo-cluster"
 
 
 def setup_function():
@@ -23,20 +24,23 @@ def setup_function():
     }
 
 
-def test_lists_both_resource_types():
+def test_lists_clusters_and_both_resource_types():
     with TestClient(app) as client:
-        pools = client.get("/api/v1/nodepools", headers=HEADERS)
-        classes = client.get("/api/v1/ec2nodeclasses", headers=HEADERS)
+        clusters = client.get("/api/v1/clusters", headers=HEADERS)
+        pools = client.get(f"/api/v1/clusters/{CLUSTER}/nodepools", headers=HEADERS)
+        classes = client.get(f"/api/v1/clusters/{CLUSTER}/ec2nodeclasses", headers=HEADERS)
+    assert clusters.status_code == 200
+    assert clusters.json()["items"][0]["id"] == CLUSTER
     assert pools.status_code == 200
     assert pools.json()["items"][0]["metadata"]["name"] == "general-purpose"
     assert classes.status_code == 200
     assert classes.json()["items"][0]["metadata"]["name"] == "default"
 
 
-def test_patch_changes_only_spec():
+def test_patch_changes_only_spec_in_selected_cluster():
     with TestClient(app) as client:
         response = client.patch(
-            "/api/v1/nodepools/general-purpose",
+            f"/api/v1/clusters/{CLUSTER}/nodepools/general-purpose",
             headers=HEADERS,
             json={"spec": {"disruption": {"consolidationPolicy": "WhenEmpty"}}},
         )
@@ -45,22 +49,29 @@ def test_patch_changes_only_spec():
     assert response.json()["metadata"]["resourceVersion"] == "1"
 
 
+def test_unknown_cluster_is_not_accepted():
+    with TestClient(app) as client:
+        response = client.get("/api/v1/clusters/not-registered/nodepools", headers=HEADERS)
+    assert response.status_code == 404
+
+
 def test_proxy_context_is_required_for_reads_and_writes():
     with TestClient(app) as client:
-        response = client.get("/api/v1/nodepools")
+        response = client.get("/api/v1/clusters", headers={})
     assert response.status_code == 403
 
 
 def test_patch_rejects_metadata_changes():
     with TestClient(app) as client:
         response = client.patch(
-            "/api/v1/nodepools/general-purpose",
+            f"/api/v1/clusters/{CLUSTER}/nodepools/general-purpose",
             headers=HEADERS,
             json={"metadata": {"labels": {"example": "value"}}, "spec": {}},
         )
     assert response.status_code == 422
 
 
-def test_crd_api_groups_are_correct():
+def test_crd_api_groups_and_resource_names_are_correct():
     assert resource_path("nodepools") == "/apis/karpenter.sh/v1/nodepools"
     assert resource_path("ec2nodeclasses") == "/apis/karpenter.k8s.aws/v1/ec2nodeclasses"
+    assert resource_path("nodepools", "pool with spaces") == "/apis/karpenter.sh/v1/nodepools/pool%20with%20spaces"

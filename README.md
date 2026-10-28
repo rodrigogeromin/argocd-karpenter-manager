@@ -1,22 +1,30 @@
-# Argo CD Karpenter Manager (prototype)
+# Argo CD Karpenter Manager (protótipo)
 
-System-level Argo CD extension (`/karpenter`) with a FastAPI backend for reading and editing Karpenter `NodePool` and `EC2NodeClass` resources.
+Extensão system-level do Argo CD (`/karpenter`) com uma API FastAPI para consultar e editar recursos Karpenter `NodePool` e `EC2NodeClass` em clusters registrados no Argo CD.
 
-The design follows the `argocd-swagger-ui-extension` system page registration pattern and the authenticated Argo CD Proxy Extension used by `brainstorm/swagger-gateway/application.yaml`. The browser calls `/extensions/karpenter/*`; Argo CD forwards the request to the service, retaining Argo CD's user authentication and extension RBAC.
+A interface não depende de uma Application que possua os recursos. O usuário escolhe um cluster do inventário do Argo CD; a API resolve a conexão registrada e acessa diretamente a API Kubernetes desse cluster. O cluster local aparece como `in-cluster`.
 
-> Prototype warning: write operations patch the live Kubernetes API. Restrict access with Argo CD extension RBAC and Kubernetes RBAC, review diffs before applying, and use a non-production cluster first.
+> As operações de escrita alteram o recurso diretamente no cluster. Restrinja quem pode invocar a extensão e revise as mudanças antes de aplicar.
 
-## Prototype scope
+## Escopo do protótipo
 
-- System page available without selecting an Application.
-- Lists Karpenter NodePools and EC2NodeClasses from the cluster where the backend runs.
-- Reads one object and edits its `spec` through a JSON editor.
-- Uses Kubernetes merge-patch and rejects patches outside `spec`.
-- Has an in-memory fixture mode for local UI/API development.
+- Página system-level, disponível sem selecionar uma Application.
+- Seletor de cluster com nome, projeto e tipo de autenticação configurada.
+- Consulta e edição dos NodePools e EC2NodeClasses diretamente no cluster escolhido.
+- Formulário guiado para opções comuns, com preservação das configurações avançadas não editadas.
+- Modo de fixtures em memória para desenvolvimento local da API.
 
-This first slice does not implement audit history, approval workflows, multi-cluster selection, policy validation, or field-level forms. The JSON editor is deliberately a prototype.
+O protótipo reconhece clusters com `bearerToken` ou `awsAuthConfig` do EKS (com role opcional). Outros provedores, autenticação por certificado cliente e configuração via exec ainda não são suportados; a API retorna erro explícito nesses casos.
 
-## Run the API locally
+## Segurança e permissões
+
+Para montar conexões remotas, a ServiceAccount da API lê os Secrets de cluster no namespace `argocd`, identificados pelo label `argocd.argoproj.io/secret-type=cluster`. O RBAC é limitado ao namespace `argocd`, mas `list` de Secrets pode revelar qualquer Secret desse namespace. Portanto, considere este acesso sensível e restrinja o namespace e a invocação da extensão.
+
+As operações no cluster remoto usam a credencial registrada no Secret do Argo CD. Essa credencial precisa ter `get`, `list` e `patch` em `nodepools.karpenter.sh` e `ec2nodeclasses.karpenter.k8s.aws`. A identidade IAM do pod precisa poder assumir `roleARN`, se configurada em `awsAuthConfig`. A API nunca aceita endpoint de cluster fornecido pelo navegador; o ID é resolvido exclusivamente pelo inventário do Argo CD.
+
+Em produção, prefira credenciais dedicadas com privilégio mínimo por cluster ou um agente por cluster. A API deve ser tratada como componente com acesso a todas as credenciais guardadas nos Secrets de cluster do Argo CD.
+
+## Executar a API localmente
 
 ```sh
 cd api
@@ -25,45 +33,35 @@ pip install -r requirements.txt
 KARPENTER_DEMO_MODE=true uvicorn main:app --reload --port 8080
 ```
 
-Open `http://localhost:8080/docs` or `http://localhost:8080/api/v1/nodepools`. In-cluster mode uses the pod service account token and Kubernetes CA; see `deploy/application.yaml` for the RBAC and service wiring. The service requires the Karpenter CRDs to be installed.
+No modo local, consulte `http://localhost:8080/docs`. Em produção, a conexão ao cluster de controle usa o token e a CA da ServiceAccount; a conexão ao cluster remoto usa os dados registrados pelo Argo CD. Veja `deploy/application.yaml` para o RBAC e a implantação.
 
-## Extension integration
+## Integração com Argo CD
 
-- Register with `registerSystemLevelExtension(component, 'Karpenter', '/karpenter', 'fa-server')` after the host root `#app` has committed, matching the startup race fix in the reference extension. Release installs the JavaScript bundle into `/tmp/extensions/resources` in every `argocd-server` pod using the Argo CD extension installer.
-- Configure Argo CD Proxy Extension `karpenter` to target `http://karpenter-manager.karpenter-manager.svc.cluster.local:8080`.
-- Grant `extensions, invoke, karpenter, allow` only to the intended Argo CD roles.
-- The extension uses relative `/extensions/karpenter` URLs, so installations below a base path continue to work.
+- Registre com `registerSystemLevelExtension(component, 'Karpenter', '/karpenter', 'fa-server')` após a montagem do `#app`, usando o padrão system-level.
+- Configure o Argo CD Proxy Extension `karpenter` para `http://karpenter-manager.karpenter-manager.svc.cluster.local:8080`.
+- Conceda `extensions, invoke, karpenter, allow` apenas às roles autorizadas.
+- A extensão usa URLs relativas em `/extensions/karpenter`, compatíveis com instalações sob um base path.
 
-The extension reads its Argo CD proxy context from `deploy/karpenter-manager-config.yaml`, matching the configurable JavaScript ConfigMap pattern in `argocd-swagger-ui-extension`. The API's expected values come from the `karpenter-manager-context` ConfigMap rendered by `deploy/application.yaml`; keep both in sync when changing the Application or project. These headers are context assertions only; authorization must remain in Argo CD RBAC and Kubernetes RBAC.
+Os headers de Application e Project vêm da configuração do proxy da extensão. Eles afirmam o contexto do proxy e não autenticam nem selecionam o cluster de destino.
 
 ## API
 
 - `GET /healthz`
-- `GET /api/v1/nodepools`
-- `GET /api/v1/nodepools/{name}`
-- `PATCH /api/v1/nodepools/{name}` body: `{"spec": {...}}`
-- `GET /api/v1/ec2nodeclasses`
-- `GET /api/v1/ec2nodeclasses/{name}`
-- `PATCH /api/v1/ec2nodeclasses/{name}` body: `{"spec": {...}}`
+- `GET /api/v1/clusters`
+- `GET /api/v1/clusters/{clusterId}/nodepools`
+- `GET /api/v1/clusters/{clusterId}/nodepools/{name}`
+- `PATCH /api/v1/clusters/{clusterId}/nodepools/{name}` com `{"spec": {...}}`
+- Os mesmos endpoints para `ec2nodeclasses`.
 
-Patch uses Kubernetes `application/merge-patch+json` and only accepts a top-level `spec` key. Normal Kubernetes validation and Karpenter reconciliation still apply.
+O `clusterId` deve ser um ID do inventário Argo CD. O patch usa `application/merge-patch+json` e aceita apenas a chave de topo `spec`. Validações Kubernetes e reconciliação do Karpenter continuam valendo.
 
-## CI, build and releases
+## CI, build e releases
 
-GitHub Actions compiles the system extension, type-checks it, runs frontend contract tests and FastAPI tests, verifies that the production bundle contains only the expected extension, packages it, and runs `npm audit`. Pushes to `main`, pull requests and manual dispatch run `.github/workflows/validate.yml`; CI uploads `dist/karpenter-manager.tar.gz` for download.
-
-The release workflow runs when a `v*` tag is pushed. Before dependency installation it checks that the tag matches `extension/package.json` (currently `v0.2.2`), then repeats the checks and creates a GitHub Release with the extension tarball, SHA-256 checksum, release identity, Argo CD Application manifest and proxy/RBAC patch. For example, after merging version changes to `main`:
+O GitHub Actions compila a extensão system-level, verifica tipos, executa os testes de contrato, cria o bundle e publica artefatos de CI. A workflow de release é acionada por uma tag `v*`, que deve corresponder à versão em `extension/package.json`. Após atualizar a versão na branch principal:
 
 ```sh
-git tag v0.2.2
-git push origin v0.2.2
+git tag v0.2.6
+git push origin v0.2.6
 ```
 
-The tag is the release trigger; the workflow publishes the release after all checks pass. Assets include the bundle, checksum, the release-specific `argocd-server` installer patch, the context ConfigMap, backend and proxy manifests, and [installation instructions](docs/installation.md).
-
-## Next prototype increments
-
-1. Expand guided controls and add a field-by-field before/after diff.
-2. Add optimistic concurrency (`resourceVersion`) and audit events.
-3. Add validation for Karpenter API versions and organization-specific change policies.
-4. Build/package the extension bundle and install it into an Argo CD 3.5.1 test environment.
+A release publica o bundle, checksum, identidade da release e manifests da extensão, API, proxy e instruções de instalação.
