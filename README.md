@@ -52,18 +52,18 @@ Patch uses Kubernetes `application/merge-patch+json` and only accepts a top-leve
 
 GitHub Actions compiles the system extension, type-checks it, runs frontend contract tests and FastAPI tests, verifies that the production bundle contains only the expected extension, packages it, and runs `npm audit`. Pushes to `main`, pull requests and manual dispatch run `.github/workflows/validate.yml`; CI uploads `dist/karpenter-manager.tar.gz` for download.
 
-The release workflow runs when a `v*` tag is pushed. Before dependency installation it checks that the tag matches `extension/package.json` (currently `v0.1.0`), then repeats the checks and creates a GitHub Release with the extension tarball, SHA-256 checksum, release identity, Argo CD Application manifest and proxy/RBAC patch. For example, after merging version changes to `main`:
+The release workflow runs when a `v*` tag is pushed. Before dependency installation it checks that the tag matches `extension/package.json` (currently `v0.2.1`), then repeats the checks and creates a GitHub Release with the extension tarball, SHA-256 checksum, release identity, Argo CD Application manifest and proxy/RBAC patch. For example, after merging version changes to `main`:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 The tag is the release trigger; the workflow publishes the release after all checks pass. Assets include the bundle, checksum, the release-specific `argocd-server` installer patch, backend and proxy manifests, and [installation instructions](docs/installation.md).
 
 ## Next prototype increments
 
-1. Replace raw JSON editing with focused controls and before/after diff.
+1. Expand guided controls and add a field-by-field before/after diff.
 2. Add optimistic concurrency (`resourceVersion`) and audit events.
 3. Add validation for Karpenter API versions and organization-specific change policies.
 4. Build/package the extension bundle and install it into an Argo CD 3.5.1 test environment.

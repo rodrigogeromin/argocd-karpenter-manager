@@ -57,7 +57,7 @@ export function toggleRequirementValue(spec:Record<string,unknown>,key:string,va
   return setAtPath(spec,['template','spec','requirements'],updated.length?updated:undefined);
 }
 
-export function inspectDiscoverySelector(spec:Record<string,unknown>,path:string[]):SelectorStatus {
+export function inspectDiscoverySelector(spec:Record<string,unknown>,path:ReadonlyArray<string>):SelectorStatus {
   const terms=getAtPath(spec,path);
   if(terms===undefined) return {value:'',editable:true};
   if(!Array.isArray(terms)||terms.length!==1||!isRecord(terms[0])||!isRecord(terms[0].tags)) return {value:'',editable:false,reason:'O seletor atual combina IDs, nomes ou várias tags. Ele será mantido sem alterações.'};
@@ -66,7 +66,7 @@ export function inspectDiscoverySelector(spec:Record<string,unknown>,path:string
   return {value:tags['karpenter.sh/discovery'],editable:true};
 }
 
-export function setDiscoverySelector(spec:Record<string,unknown>,path:string[],value:string):Record<string,unknown> {
+export function setDiscoverySelector(spec:Record<string,unknown>,path:ReadonlyArray<string>,value:string):Record<string,unknown> {
   const normalized=value.trim();
   return setAtPath(spec,path,normalized?[{tags:{'karpenter.sh/discovery':normalized}}]:[]);
 }
