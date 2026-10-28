@@ -24,6 +24,17 @@ As operações no cluster remoto usam a credencial registrada no Secret do Argo 
 
 Em produção, prefira credenciais dedicadas com privilégio mínimo por cluster ou um agente por cluster. A API deve ser tratada como componente com acesso a todas as credenciais guardadas nos Secrets de cluster do Argo CD.
 
+## Diagnóstico da API
+
+A API emite logs JSON por requisição no `stdout`, com `request_id`, método, rota, status e duração. Falhas ao consultar o inventário Argo CD, gerar token EKS ou chamar a API Kubernetes também registram um evento específico e a exceção técnica. O conteúdo dos recursos, tokens e headers de autenticação não é registrado. Ajuste o nível com `KARPENTER_LOG_LEVEL` (`INFO` por padrão).
+
+```sh
+kubectl logs -n karpenter-manager deploy/karpenter-manager -c api --since=15m --follow
+kubectl logs -n karpenter-manager deploy/karpenter-manager -c api --since=15m | grep 'request_id-do-erro'
+```
+
+Quando a resposta vier da API, a interface mostra o `request_id` junto do erro para localizar a linha correspondente. Se o proxy do Argo CD devolver o 502 antes de encaminhar a chamada, esse ID não aparece e não haverá registro de requisição na API.
+
 ## Executar a API localmente
 
 ```sh
@@ -60,8 +71,8 @@ O `clusterId` deve ser um ID do inventário Argo CD. O patch usa `application/me
 O GitHub Actions compila a extensão system-level, verifica tipos, executa os testes de contrato, cria o bundle e publica artefatos de CI. A workflow de release é acionada por uma tag `v*`, que deve corresponder à versão em `extension/package.json`. Após atualizar a versão na branch principal:
 
 ```sh
-git tag v0.2.6
-git push origin v0.2.6
+git tag v0.2.7
+git push origin v0.2.7
 ```
 
 A release publica o bundle, checksum, identidade da release e manifests da extensão, API, proxy e instruções de instalação.
