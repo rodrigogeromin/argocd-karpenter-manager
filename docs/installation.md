@@ -16,6 +16,7 @@ After all checks pass, the workflow publishes:
 - `karpenter-manager.tar.gz`: only `resources/extension-karpenter-manager.js`.
 - `checksums.txt`: SHA-256 checksum of the extension archive.
 - `argocd-server-patch.yaml`: installer patch rendered with the exact repository and tag.
+- `karpenter-manager-config.yaml`: ConfigMap that provides the Application/project context to the UI bundle.
 - `application.yaml`: backend deployment and narrowly scoped Kubernetes RBAC.
 - `argocd-patches.yaml`: Argo CD proxy configuration and example extension RBAC.
 - `installation.md`: this guide.
@@ -33,13 +34,16 @@ RELEASE_TAG=__TAG__ RELEASE_REPOSITORY=__REPOSITORY__ node scripts/release-asset
 
 Install the API Application and configure the Argo CD proxy first. Review and adapt `deploy/argocd-patches.yaml` to preserve existing `argocd-cm` and `argocd-rbac-cm` settings. The example RBAC line allows `role:admin` to invoke the extension; change it to the intended roles.
 
+The extension reads `application` and `project` from `karpenter-manager-config.yaml`, following the Swagger UI extension's ConfigMap pattern. Set `application` to the Argo CD Application context in `namespace:name` format, and `project` to its AppProject. The API validates these headers against `ARGOCD_APPLICATION` and `ARGOCD_PROJECT` in the backend's `karpenter-manager-context` ConfigMap; keep both ConfigMaps in sync when customizing the context. Apply the UI ConfigMap before patching the `argocd-server` Deployment. After changing either context, restart both `argocd-server` and the `karpenter-manager` Deployment so their mounted script and environment values reload.
+
 Download assets from a specific release and verify the checksum:
 
 ```sh
 gh release download __TAG__ --repo __REPOSITORY__ \
   --pattern karpenter-manager.tar.gz --pattern checksums.txt \
   --pattern argocd-server-patch.yaml --pattern application.yaml \
-  --pattern argocd-patches.yaml --pattern installation.md --dir release-__TAG__
+  --pattern argocd-patches.yaml --pattern karpenter-manager-config.yaml \
+  --pattern installation.md --dir release-__TAG__
 (cd release-__TAG__ && sha256sum --check checksums.txt)
 ```
 
@@ -47,11 +51,21 @@ The release patch assumes `Deployment/argocd-server` in namespace `argocd`, cont
 
 ```sh
 kubectl get deployment argocd-server -n argocd -o yaml > argocd-server-before.yaml
+kubectl apply -f release-__TAG__/karpenter-manager-config.yaml
 kubectl patch deployment argocd-server -n argocd --type strategic \
   --patch-file release-__TAG__/argocd-server-patch.yaml --dry-run=server -o yaml
 kubectl patch deployment argocd-server -n argocd --type strategic \
   --patch-file release-__TAG__/argocd-server-patch.yaml
 kubectl rollout status deployment/argocd-server -n argocd
+```
+
+When changing the context later, restart both workloads so the `argocd-server` mounted script and API environment values reload:
+
+```sh
+kubectl rollout restart deployment/argocd-server -n argocd
+kubectl rollout restart deployment/karpenter-manager -n karpenter-manager
+kubectl rollout status deployment/argocd-server -n argocd
+kubectl rollout status deployment/karpenter-manager -n karpenter-manager
 ```
 
 The UI bundle is separate from the backend Application and Proxy Extension. The system page appears at `/karpenter`; calls go through `/extensions/karpenter`. The backend service account can only get/list/patch `nodepools.karpenter.sh` and `ec2nodeclasses.karpenter.k8s.aws`.

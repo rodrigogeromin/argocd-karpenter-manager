@@ -65,6 +65,23 @@ test('Karpenter editing uses guided fields with validation and review instead of
   assert.match(help, /guided forms/);
 });
 
+test('Karpenter proxy context is read from the Argo CD server config map', async () => {
+  const api = await readFile(new URL('../extension/src/features/karpenter/api.ts', import.meta.url), 'utf8');
+  const context = await readFile(new URL('../extension/src/argocd/gateway-context.ts', import.meta.url), 'utf8');
+  const config = await readFile(new URL('../deploy/karpenter-manager-config.yaml', import.meta.url), 'utf8');
+  const patch = await readFile(new URL('../deploy/argocd-server-patch.yaml', import.meta.url), 'utf8');
+  const application = await readFile(new URL('../deploy/application.yaml', import.meta.url), 'utf8');
+  assert.match(context, /window\.karpenterManagerConfig/);
+  assert.match(context, /namespace:name/);
+  assert.match(api, /readGatewayContext\(\)/);
+  assert.doesNotMatch(api, /argocd:karpenter-manager|appset/);
+  assert.match(config, /extension-0-karpenter-manager-config\.js/);
+  assert.match(config, /window\.karpenterManagerConfig/);
+  assert.match(patch, /extension-0-karpenter-manager-config\.js/);
+  assert.match(application, /name: ARGOCD_APPLICATION/);
+  assert.match(application, /name: ARGOCD_PROJECT/);
+});
+
 test('extension uses a host registration adapter', () => {
   assert.match(source, /registerSystemLevelExtension/);
   assert.match(source, /new MutationObserver/);

@@ -24,6 +24,15 @@ spec:
             name: karpenter-manager
             namespace: karpenter-manager
         - |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: karpenter-manager-context
+            namespace: karpenter-manager
+          data:
+            ARGOCD_APPLICATION: "argocd:karpenter-manager"
+            ARGOCD_PROJECT: "appset"
+        - |
           apiVersion: rbac.authorization.k8s.io/v1
           kind: ClusterRole
           metadata:
@@ -70,7 +79,14 @@ spec:
                   imagePullPolicy: IfNotPresent
                   command: ["sh", "-ec", "pip install --no-cache-dir -r /app/requirements.txt; cd /app; exec uvicorn main:app --host 0.0.0.0 --port 8080 --no-access-log"]
                   ports: [{name: http, containerPort: 8080}]
-                  env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
+                  env:
+                  - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+                  - name: ARGOCD_APPLICATION
+                    valueFrom:
+                      configMapKeyRef: {name: karpenter-manager-context, key: ARGOCD_APPLICATION}
+                  - name: ARGOCD_PROJECT
+                    valueFrom:
+                      configMapKeyRef: {name: karpenter-manager-context, key: ARGOCD_PROJECT}
                   resources:
                     requests: {cpu: 100m, memory: 128Mi}
                     limits: {cpu: 500m, memory: 256Mi}

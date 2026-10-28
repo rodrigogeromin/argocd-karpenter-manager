@@ -56,4 +56,5 @@ jobs:
         run: |
           gh release upload "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --clobber \
             dist/karpenter-manager.tar.gz dist/checksums.txt dist/release-info.txt \
-            dist/argocd-server-patch.yaml dist/application.yaml dist/argocd-patches.yaml dist/installation.md
+            dist/argocd-server-patch.yaml dist/application.yaml dist/argocd-patches.yaml \
+            dist/installation.md dist/karpenter-manager-config.yaml

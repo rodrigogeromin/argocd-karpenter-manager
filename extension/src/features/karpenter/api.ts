@@ -7,8 +7,8 @@ export type Resource = {
 };
 
 export type ResourceKind = 'nodepools' | 'ec2nodeclasses';
+import {readGatewayContext} from '../../argocd/gateway-context';
 const API = '/extensions/karpenter/api/v1';
-const ARGO_CONTEXT = {'Argocd-Application-Name':'argocd:karpenter-manager','Argocd-Project-Name':'appset'};
 const isRecord=(value:unknown):value is Record<string,unknown> => typeof value==='object'&&value!==null&&!Array.isArray(value);
 
 function parseResource(value:unknown):Resource {
@@ -19,7 +19,8 @@ function parseResource(value:unknown):Resource {
 }
 
 async function request(path:string,init?:RequestInit):Promise<unknown> {
-  const response=await fetch(`${API}${path}`,{...init,credentials:'same-origin',headers:{'Content-Type':'application/json',...ARGO_CONTEXT,...(init?.headers||{})}});
+  const context=readGatewayContext();
+  const response=await fetch(`${API}${path}`,{...init,credentials:'same-origin',headers:{'Content-Type':'application/json','Argocd-Application-Name':context.application,'Argocd-Project-Name':context.project,...(init?.headers||{})}});
   const body=await response.json().catch(()=>null);
   if(!response.ok) {
     const message=isRecord(body)&&typeof body.detail==='string'?body.detail:`API respondeu ${response.status}`;

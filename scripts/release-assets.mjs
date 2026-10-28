@@ -27,6 +27,7 @@ if (process.argv.includes('--validate-only')) {
   await Promise.all([
     copyFile(new URL('../deploy/application.yaml', import.meta.url), new URL('../dist/application.yaml', import.meta.url)),
     copyFile(new URL('../deploy/argocd-patches.yaml', import.meta.url), new URL('../dist/argocd-patches.yaml', import.meta.url)),
+    copyFile(new URL('../deploy/karpenter-manager-config.yaml', import.meta.url), new URL('../dist/karpenter-manager-config.yaml', import.meta.url)),
     writeFile(new URL('../dist/installation.md', import.meta.url), guide),
   ]);
   console.log(`Release assets prepared for ${repository}@${tag}`);

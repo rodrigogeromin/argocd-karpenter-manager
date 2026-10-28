@@ -29,8 +29,9 @@ The extension is registered as a system-level extension using `extension/extensi
 - Path: `/karpenter`
 - API base path: `/extensions/karpenter/api/v1`
 - API context headers: `Argocd-Application-Name` and `Argocd-Project-Name`
+- Header values: read at runtime from `window.karpenterManagerConfig`, supplied by the `karpenter-manager-config` ConfigMap mounted into `argocd-server`.
 
-The backend is configured separately. See the repository's deployment guide for the Argo CD extension proxy and Kubernetes credentials. The API must provide `GET /nodepools`, `GET /nodepools/{name}`, `PATCH /nodepools/{name}`, and corresponding `/ec2nodeclasses` endpoints.
+The backend is configured separately. Keep the Application/project values in the Argo CD UI ConfigMap aligned with the `karpenter-manager-context` ConfigMap used by the API. When either value changes, restart `argocd-server` and the `karpenter-manager` Deployment so the mounted configuration and API environment reload. See the repository's deployment guide for the Argo CD extension proxy and Kubernetes credentials. The API must provide `GET /nodepools`, `GET /nodepools/{name}`, `PATCH /nodepools/{name}`, and corresponding `/ec2nodeclasses` endpoints.
 
 ## Prerequisites
 

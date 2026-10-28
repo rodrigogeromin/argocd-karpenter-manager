@@ -34,7 +34,7 @@ Open `http://localhost:8080/docs` or `http://localhost:8080/api/v1/nodepools`. I
 - Grant `extensions, invoke, karpenter, allow` only to the intended Argo CD roles.
 - The extension uses relative `/extensions/karpenter` URLs, so installations below a base path continue to work.
 
-The API expects Argo CD proxy context headers for the configured synthetic context (`argocd:karpenter-manager`, project `appset`). Update `api/main.py` and the frontend together if the configured context changes. These headers are context assertions only; authorization must remain in Argo CD RBAC and Kubernetes RBAC.
+The extension reads its Argo CD proxy context from `deploy/karpenter-manager-config.yaml`, matching the configurable JavaScript ConfigMap pattern in `argocd-swagger-ui-extension`. The API's expected values come from the `karpenter-manager-context` ConfigMap rendered by `deploy/application.yaml`; keep both in sync when changing the Application or project. These headers are context assertions only; authorization must remain in Argo CD RBAC and Kubernetes RBAC.
 
 ## API
 
@@ -59,7 +59,7 @@ git tag v0.2.2
 git push origin v0.2.2
 ```
 
-The tag is the release trigger; the workflow publishes the release after all checks pass. Assets include the bundle, checksum, the release-specific `argocd-server` installer patch, backend and proxy manifests, and [installation instructions](docs/installation.md).
+The tag is the release trigger; the workflow publishes the release after all checks pass. Assets include the bundle, checksum, the release-specific `argocd-server` installer patch, the context ConfigMap, backend and proxy manifests, and [installation instructions](docs/installation.md).
 
 ## Next prototype increments
 

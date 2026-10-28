@@ -1,0 +1,13 @@
+# Customize these values for the Argo CD Application that owns the Karpenter Manager API.
+# The Application header uses Argo CD's namespace:name format.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: karpenter-manager-config
+  namespace: argocd
+data:
+  extension-0-karpenter-manager-config.js: |
+    window.karpenterManagerConfig = Object.freeze({
+      application: 'argocd:karpenter-manager',
+      project: 'appset'
+    });
