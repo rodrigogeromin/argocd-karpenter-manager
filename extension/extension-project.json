@@ -1,0 +1,18 @@
+{
+  "name": "karpenter-manager",
+  "description": "Manage Karpenter NodePools and EC2NodeClasses from Argo CD.",
+  "argoCdVersion": "3.5.1",
+  "profile": "system-level",
+  "registration": {"title": "Karpenter", "path": "/karpenter", "icon": "fa-server"},
+  "dataSource": "proxy",
+  "backend": {"kind": "proxy"},
+  "schemaVersion": 2,
+  "templateVersion": "2.2.1",
+  "hostContract": {
+    "sourceKind": "official", "tag": "v3.5.1",
+    "method": "registerSystemLevelExtension",
+    "signature": "registerSystemLevelExtension(component, title, path, icon)",
+    "props": [], "globals": ["React", "ReactDOM", "ReactJSXRuntime"], "jsxMode": "automatic",
+    "argumentMap": ["component", "registration.title", "registration.path", "registration.icon"]
+  }
+}
