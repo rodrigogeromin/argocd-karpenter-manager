@@ -1,27 +1,18 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {HelpFlyout} from '../../app/HelpFlyout';
 import '../../style.css';
-
-const API = '/extensions/karpenter/api/v1';
-const ARGO_CONTEXT = {'Argocd-Application-Name':'argocd:karpenter-manager','Argocd-Project-Name':'appset'};
-type Resource = {apiVersion?: string;kind?: string;metadata:{name:string;resourceVersion?:string};spec:Record<string, unknown>;status?:Record<string,unknown>};
-
-async function request(path:string, init?:RequestInit) {
-  const response=await fetch(`${API}${path}`,{...init,credentials:'same-origin',headers:{'Content-Type':'application/json',...ARGO_CONTEXT,...(init?.headers||{})}});
-  if(!response.ok) { const body=await response.json().catch(()=>({})); throw new Error(body.detail || `API respondeu ${response.status}`); }
-  return response.json();
-}
+import {getResource, listResources, patchResource, type Resource, type ResourceKind} from './api';
 
 export function KarpenterManager() {
-  const [kind,setKind]=useState<'nodepools'|'ec2nodeclasses'>('nodepools');
+  const [kind,setKind]=useState<ResourceKind>('nodepools');
   const [items,setItems]=useState<Resource[]>([]); const [selected,setSelected]=useState<Resource|null>(null);
   const [draft,setDraft]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState(''); const [notice,setNotice]=useState('');
   const [helpOpen,setHelpOpen]=useState(false);
   const closeHelp=useCallback(()=>setHelpOpen(false),[]);
-  async function load(nextKind=kind) { setBusy(true); setError(''); setNotice(''); setSelected(null); try { const data=await request(`/${nextKind}`); setItems(data.items||[]); } catch(e) { setError((e as Error).message); } finally { setBusy(false); } }
+  async function load(nextKind=kind) { setBusy(true); setError(''); setNotice(''); setSelected(null); try { const data=await listResources(nextKind); setItems(data); } catch(e) { setError((e as Error).message); } finally { setBusy(false); } }
   useEffect(()=>{void load(kind);},[kind]);
-  async function select(name:string) {setBusy(true);setError('');setNotice('');try {const obj=await request(`/${kind}/${encodeURIComponent(name)}`);setSelected(obj);setDraft(JSON.stringify(obj.spec,null,2));}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
-  async function save() {if(!selected)return; let spec;try{spec=JSON.parse(draft);}catch{setError('JSON inválido.');return;} if(!spec||typeof spec!=='object'||Array.isArray(spec)){setError('spec precisa ser um objeto JSON.');return;} if(!window.confirm(`Aplicar alterações em ${selected.metadata.name}?`)) return;setBusy(true);setError('');try{const obj=await request(`/${kind}/${encodeURIComponent(selected.metadata.name)}`,{method:'PATCH',body:JSON.stringify({spec})});setSelected(obj);setDraft(JSON.stringify(obj.spec,null,2));setNotice('Alterações enviadas ao Kubernetes.');await load(kind);setSelected(obj);setDraft(JSON.stringify(obj.spec,null,2));}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function select(name:string) {setBusy(true);setError('');setNotice('');try {const obj=await getResource(kind,name);setSelected(obj);setDraft(JSON.stringify(obj.spec,null,2));}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function save() {if(!selected)return; let spec;try{spec=JSON.parse(draft);}catch{setError('JSON inválido.');return;} if(!spec||typeof spec!=='object'||Array.isArray(spec)){setError('spec precisa ser um objeto JSON.');return;} if(!window.confirm(`Aplicar alterações em ${selected.metadata.name}?`)) return;setBusy(true);setError('');try{const obj=await patchResource(kind,selected.metadata.name,spec);setSelected(obj);setDraft(JSON.stringify(obj.spec,null,2));setNotice('Alterações enviadas ao Kubernetes.');await load(kind);setSelected(obj);setDraft(JSON.stringify(obj.spec,null,2));}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   return <main className="km"><header><div><p className="eyebrow">SYSTEM EXTENSION</p><h1>Karpenter Manager</h1><p>Inspecione e edite configurações de provisionamento do cluster.</p></div><div className="km-header-actions"><button onClick={()=>setHelpOpen(true)} aria-haspopup="dialog">Ajuda</button><button onClick={()=>void load()} disabled={busy}>Atualizar</button></div></header>
     <nav aria-label="Tipos de recursos"><button className={kind==='nodepools'?'active':''} aria-pressed={kind==='nodepools'} onClick={()=>setKind('nodepools')}>NodePools</button><button className={kind==='ec2nodeclasses'?'active':''} aria-pressed={kind==='ec2nodeclasses'} onClick={()=>setKind('ec2nodeclasses')}>EC2NodeClasses</button></nav>
     {error&&<div className="alert" role="alert">{error}</div>}{notice&&<div className="notice" role="status">{notice}</div>}
