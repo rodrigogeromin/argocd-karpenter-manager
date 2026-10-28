@@ -3,10 +3,11 @@ import './style.css';
 
 declare global { interface Window { extensionsAPI?: {registerSystemLevelExtension?: (component: React.ComponentType, title: string, path: string, icon: string) => void} } }
 const API = '/extensions/karpenter/api/v1';
+const ARGO_CONTEXT = {'Argocd-Application-Name':'argocd:karpenter-manager','Argocd-Project-Name':'appset'};
 type Resource = {apiVersion?: string;kind?: string;metadata:{name:string;resourceVersion?:string};spec:Record<string, unknown>;status?:Record<string,unknown>};
 
 async function request(path:string, init?:RequestInit) {
-  const response=await fetch(`${API}${path}`,{...init,credentials:'same-origin',headers:{'Content-Type':'application/json',...(init?.headers||{})}});
+  const response=await fetch(`${API}${path}`,{...init,credentials:'same-origin',headers:{'Content-Type':'application/json',...ARGO_CONTEXT,...(init?.headers||{})}});
   if(!response.ok) { const body=await response.json().catch(()=>({})); throw new Error(body.detail || `API respondeu ${response.status}`); }
   return response.json();
 }

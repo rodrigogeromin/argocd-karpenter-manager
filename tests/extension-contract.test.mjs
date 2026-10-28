@@ -16,6 +16,8 @@ test('extension targets Argo CD system-level registration', () => {
 
 test('extension uses the authenticated proxy route and defers registration until host mount', () => {
   assert.match(source, /\/extensions\/karpenter\/api\/v1/);
+  assert.match(source, /Argocd-Application-Name/);
+  assert.match(source, /Argocd-Project-Name/);
   assert.match(source, /registerSystemLevelExtension\(Extension,'Karpenter','\/karpenter','fa-server'\)/);
   assert.match(source, /new MutationObserver/);
 });

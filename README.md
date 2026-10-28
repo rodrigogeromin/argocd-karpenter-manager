@@ -29,7 +29,7 @@ Open `http://localhost:8080/docs` or `http://localhost:8080/api/v1/nodepools`. I
 
 ## Extension integration
 
-- Register with `registerSystemLevelExtension(component, 'Karpenter', '/karpenter', 'fa-server')` after the host root `#app` has committed, matching the startup race fix in the reference extension.
+- Register with `registerSystemLevelExtension(component, 'Karpenter', '/karpenter', 'fa-server')` after the host root `#app` has committed, matching the startup race fix in the reference extension. Release installs the JavaScript bundle into `/tmp/extensions/resources` in every `argocd-server` pod using the Argo CD extension installer.
 - Configure Argo CD Proxy Extension `karpenter` to target `http://karpenter-manager.karpenter-manager.svc.cluster.local:8080`.
 - Grant `extensions, invoke, karpenter, allow` only to the intended Argo CD roles.
 - The extension uses relative `/extensions/karpenter` URLs, so installations below a base path continue to work.
@@ -59,7 +59,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The tag is the release trigger; the workflow publishes the release after all checks pass.
+The tag is the release trigger; the workflow publishes the release after all checks pass. Assets include the bundle, checksum, the release-specific `argocd-server` installer patch, backend and proxy manifests, and [installation instructions](docs/installation.md).
 
 ## Next prototype increments
 
